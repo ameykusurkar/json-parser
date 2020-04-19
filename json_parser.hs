@@ -1,7 +1,7 @@
-module JsonParser where
-
 import Control.Applicative
 import Data.Char
+
+main = interact (show . fmap fst . runParser jsonParser)
 
 data Json
  = JNull
