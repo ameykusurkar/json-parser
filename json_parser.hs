@@ -52,6 +52,11 @@ charParser c = Parser f
 stringParser :: String -> Parser String
 stringParser = sequenceA . map charParser
 
+intParser :: Parser Int
+intParser = read <$> (unsignedIntParser <|> signedIntParser)
+  where signedIntParser = (:) <$> charParser '-' <*> unsignedIntParser
+        unsignedIntParser = notNull (spanParser isDigit)
+
 spanParser :: (Char -> Bool) -> Parser String
 spanParser f = Parser (Just . span f)
 
@@ -82,7 +87,7 @@ jBoolParser = jTrueParser <|> jFalseParser
         jFalseParser = const (JBool False) <$> stringParser "false"
 
 jNumberParser :: Parser Json
-jNumberParser = (JNumber . read) <$> notNull (spanParser isDigit)
+jNumberParser = JNumber <$> intParser
 
 jStringParser :: Parser Json
 jStringParser = JString <$> stringLitParser

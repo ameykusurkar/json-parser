@@ -10,8 +10,8 @@ $ ghc json_parser.hs
 
 Running:
 ```shell
-$ echo '[{ "foo": "bar", "num": 5 }, null, true]' | json_parser
-Just (JArray [JObject [("foo",JString "bar"),("num",JNumber 5)],JNull,JBool True])
+$ echo '[{ "foo": "bar", "num": -5 }, null, true]' | json_parser
+Just (JArray [JObject [("foo",JString "bar"),("num",JNumber (-5))],JNull,JBool True])
 $ echo '{Invalidjson' | json_parser
 Nothing
 ```
