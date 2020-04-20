@@ -49,6 +49,9 @@ charParser c = Parser f
           | c == c'   = Just (c, cs)
           | otherwise = Nothing
 
+oneOfCharParser :: [Char] -> Parser Char
+oneOfCharParser = foldl (<|>) empty . map charParser
+
 stringParser :: String -> Parser String
 stringParser = sequenceA . map charParser
 
@@ -64,7 +67,7 @@ separatedBy :: Parser String -> Parser a -> Parser [a]
 separatedBy sep item = (:) <$> item <*> many (sep *> item) <|> pure []
 
 wsParser :: Parser String
-wsParser = many (charParser ' ')
+wsParser = many (oneOfCharParser " \n\t")
 
 stringLitParser :: Parser String
 stringLitParser = charParser '"' *> spanParser (/= '"') <* charParser '"'
