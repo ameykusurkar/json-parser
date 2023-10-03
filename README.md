@@ -5,13 +5,14 @@ A JSON parser written in Haskell from scratch using no dependencies. Done mostly
 
 Compiling:
 ```shell
-$ ghc json_parser.hs
+make
 ```
 
 Running:
 ```shell
-$ echo '[{ "foo": "bar", "num": -5 }, null, true]' | json_parser
+echo '[{ "foo": "bar", "num": -5 }, null, true]' | ./json_parser
 Just (JArray [JObject [("foo",JString "bar"),("num",JNumber (-5))],JNull,JBool True])
-$ echo '{Invalidjson' | json_parser
+
+echo '{Invalidjson' | ./json_parser
 Nothing
 ```
