@@ -1,11 +1,11 @@
 import Control.Applicative
+import Data.Foldable (fold)
 import Data.Char (isDigit)
 
 main = interact (show . fmap fst . runParser json)
 
 data Json
- = JNull | JBool Bool | JNumber Int | JString String
- | JArray [Json] | JObject [(String, Json)]
+ = JNull | JBool Bool | JNumber Int | JString String | JArray [Json] | JObject [(String, Json)]
  deriving (Show, Eq)
 
 -- A parser that given an input string, consumes from it until it can form a value of
@@ -31,6 +31,9 @@ instance Applicative Parser where
                        (parsed, rest') <- q rest
                        return (parsedF parsed, rest')
 
+instance Semigroup a => Semigroup (Parser a) where
+  p <> q = (<>) <$> p <*> q
+
 instance Alternative Parser where
   empty = Parser (const Nothing)
   (Parser p) <|> (Parser q) = Parser (\input -> p input <|> q input)
@@ -48,14 +51,17 @@ char :: Char -> Parser Char
 char ch = charWhen (ch ==)
 
 int :: Parser Int
-int = read <$> (unsigned <|> signed)
-  where signed = (:) <$> char '-' <*> unsigned
-        unsigned = some $ charWhen isDigit
+int = read <$> (sign <> digits)
+  where sign = optionalP $ string "-"
+        digits = some $ charWhen isDigit
 
 bool :: Parser Bool
 bool = true <|> false
   where true = True <$ string "true"
         false = False <$ string "false"
+
+optionalP :: Monoid a => Parser a -> Parser a
+optionalP p = fold <$> optional p
 
 string :: String -> Parser String
 string = traverse char
