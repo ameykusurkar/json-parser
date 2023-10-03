@@ -1,7 +1,7 @@
 import Control.Applicative
-import Data.Char
+import Data.Char (isDigit)
 
-main = interact (show . fmap fst . runParser jsonParser)
+main = interact (show . fmap fst . runParser json)
 
 data Json
  = JNull | JBool Bool | JNumber Int | JString String
@@ -18,8 +18,8 @@ newtype Parser a = Parser {
 
 instance Functor Parser where
   fmap f (Parser p) = Parser q
-    where q input = (p input) >>= applyF
-          applyF (parsed, rest) = Just (f parsed, rest)
+    where q input = do (parsed, rest) <- p input
+                       return (f parsed, rest)
 
 -- This is the core piece of logic that allows us to chain parsers. Implementing <*>
 -- allows us to chain parsers together by passing the unused input from one parser to
@@ -35,74 +35,68 @@ instance Alternative Parser where
   empty = Parser (const Nothing)
   (Parser p) <|> (Parser q) = Parser (\input -> p input <|> q input)
 
--- Some helper parsers --
+-- Parse basic types --
 
-notNull :: Parser [a] -> Parser [a]
-notNull (Parser f) = Parser p
-  where p input = (f input) >>= fail
-        fail (parsed, rest) = if null parsed then Nothing else Just (parsed, rest)
-
-charParser :: Char -> Parser Char
-charParser c = Parser f
-  where f "" = Nothing
-        f (c':cs)
-          | c == c'   = Just (c, cs)
+charWhen :: (Char -> Bool) -> Parser Char
+charWhen f = Parser p
+  where p "" = Nothing
+        p (c:cs)
+          | f c       = Just (c, cs)
           | otherwise = Nothing
 
-oneOfCharParser :: [Char] -> Parser Char
-oneOfCharParser = foldl (<|>) empty . map charParser
+char :: Char -> Parser Char
+char ch = charWhen (ch ==)
 
-stringParser :: String -> Parser String
-stringParser = sequenceA . map charParser
+int :: Parser Int
+int = read <$> (unsigned <|> signed)
+  where signed = (:) <$> char '-' <*> unsigned
+        unsigned = some $ charWhen isDigit
 
-intParser :: Parser Int
-intParser = read <$> (unsignedIntParser <|> signedIntParser)
-  where signedIntParser = (:) <$> charParser '-' <*> unsignedIntParser
-        unsignedIntParser = notNull (spanParser isDigit)
+bool :: Parser Bool
+bool = true <|> false
+  where true = True <$ string "true"
+        false = False <$ string "false"
+
+string :: String -> Parser String
+string = traverse char
+
+oneOf :: (a -> Parser a) -> [a] -> Parser a
+oneOf p = asum . map p
 
 spanParser :: (Char -> Bool) -> Parser String
 spanParser f = Parser (Just . span f)
 
-separatedBy :: Parser String -> Parser a -> Parser [a]
-separatedBy sep item = (:) <$> item <*> many (sep *> item) <|> pure []
+-- TODO: Allow an optional final separator (eg. [1, 2,])
+separated :: Parser b -> Parser a -> Parser [a]
+separated by item = (:) <$> item <*> many (by *> item) <|> pure []
 
-wsParser :: Parser String
-wsParser = many (oneOfCharParser " \n\t")
+ws :: Parser String
+ws = many (oneOf char " \n\t")
 
-stringLitParser :: Parser String
-stringLitParser = charParser '"' *> spanParser (/= '"') <* charParser '"'
+stringLiteral :: Parser String
+stringLiteral = quote *> literal <* quote
+  where quote = char '"'
+        literal = spanParser (/= '"')
 
 -- The parsing logic --
 
 -- TODO: Parse string literals with escaped characters
 --       Parse floating point numbers
-jsonParser :: Parser Json
-jsonParser = wsParser *>
-  (jNullParser <|> jBoolParser <|> jNumberParser <|> jStringParser <|> jArrayParser <|> jObjectParser)
-  <* wsParser
-
-jNullParser :: Parser Json
-jNullParser = const JNull <$> stringParser "null"
-
-jBoolParser :: Parser Json
-jBoolParser = jTrueParser <|> jFalseParser
-  where jTrueParser = const (JBool True) <$> stringParser "true"
-        jFalseParser = const (JBool False) <$> stringParser "false"
-
-jNumberParser :: Parser Json
-jNumberParser = JNumber <$> intParser
-
-jStringParser :: Parser Json
-jStringParser = JString <$> stringLitParser
+json :: Parser Json
+json = ws *> (jNull <|> jBool <|> jNumber <|> jString <|> jArray <|> jObject) <* ws
+  where jNull = JNull <$ string "null"
+        jBool = JBool <$> bool
+        jNumber = JNumber <$> int
+        jString = JString <$> stringLiteral
 
 -- We can see here how small parsers can be chained to parse an array. We try to parse a
 -- '[' character, followed one or many JSON items separated by a ',' and finally a '].
-jArrayParser :: Parser Json
-jArrayParser = JArray <$> (charParser '[' *> itemsParser <* charParser ']')
-  where itemsParser = separatedBy (stringParser ",") jsonParser
+jArray :: Parser Json
+jArray = JArray <$> (char '[' *> items <* char ']')
+  where items = separated (string ",") json
 
-jObjectParser :: Parser Json
-jObjectParser = JObject <$> (charParser '{' *> keyValPairsParser <* charParser '}')
-  where keyValPairsParser = separatedBy (stringParser ",") pairParser
-        pairParser = (,) <$> keyParser <* charParser ':' <*> jsonParser
-        keyParser = wsParser *> stringLitParser <* wsParser
+jObject :: Parser Json
+jObject = JObject <$> (char '{' *> pairs <* char '}')
+  where pairs = separated (string ",") pair
+        pair = (,) <$> key <* char ':' <*> json
+        key = ws *> stringLiteral <* ws
